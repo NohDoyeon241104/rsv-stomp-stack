@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>UbiSam Robot Control Center</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/css/gridstack.min.css">
+    <script src="/js/gridstack-all.js"></script>
+
+    <style>
+        :root { --sidebar-width: 220px; --footer-height: 180px; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #f4f7f6; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        .navbar { height: 60px; background: #2c3e50; color: white; display: flex; align-items: center; padding: 0 20px; z-index: 1001; gap: 15px; }
+        .wrapper { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: var(--sidebar-width); background: #34495e; color: white; display: flex; flex-direction: column; padding: 15px; flex-shrink: 0; overflow-y: auto; }
+        .sidebar-item { background: #1abc9c; padding: 12px; margin-bottom: 10px; cursor: grab; border-radius: 4px; text-align: center; font-weight: bold; font-size: 14px; user-select: none; }
+        .sidebar-footer { margin-top: auto; padding-top: 15px; border-top: 1px solid #555; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .grid-stack { min-height: 800px; background: transparent; }
+        .grid-stack-container { flex: 1; overflow-y: auto; padding: 15px; background: #e9ecef; }
+        .footer-log { height: var(--footer-height); background: #222; color: #00ff00; padding: 10px; font-family: 'Courier New', monospace; font-size: 12px; overflow-y: auto; border-top: 3px solid #444; }
+        .grid-stack-item-content { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 10px; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
+        .module-header { font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-delete { color: #e74c3c; cursor: pointer; border: none; background: none; font-size: 18px; line-height: 1; }
+        .modal { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.7); }
+        .modal-content { background:#2c3e50; color:white; margin:10% auto; padding:25px; width:400px; border-radius:12px; }
+        .modal-content input { width:100%; padding:8px; margin: 5px 0 15px 0; border-radius:4px; border:none; background:#34495e; color:white; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <span style="font-size: 20px;">🚀 <b>ROBOT CTRL</b></span>
+        <button onclick="connect()">🔌 연결</button>
+        <button onclick="disconnect()">✂ 해제</button>
+        <button onclick="saveLayout()" style="background: #27ae60; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-left: auto;">💾 레이아웃 저장</button>
+    </div>
+
+    <div class="wrapper">
+        <div class="sidebar">
+            <h4 style="margin-top: 0;">📦 모듈 목록</h4>
+            <!-- 기본 모듈 -->
+            <div class="sidebar-item" gs-w="4" gs-h="3" data-type="ROBOT_POS">📍 위치 정보</div>
+            <div class="sidebar-item" gs-w="4" gs-h="3" data-type="ROBOT_BAT">🔋 배터리</div>
+            <div class="sidebar-item" gs-w="6" gs-h="4" data-type="ROBOT_STT">📊 상태 요약</div>
+            <div class="sidebar-item" gs-w="6" gs-h="4" data-type="VISION_STREAM">🎥 카메라 스트림</div>
+            <!-- 26-03-04 NDY: UGV 모듈 -->
+            <div class="sidebar-item" gs-w="4" gs-h="4" data-type="UGV_DRIVE">🕹️ 주행 제어</div>
+            <div class="sidebar-item" gs-w="6" gs-h="6" data-type="UGV_MAP">🗺️ 지도/Nav</div>
+            <div class="sidebar-item" gs-w="6" gs-h="5" data-type="UGV_LIDAR">📡 LiDAR</div>
+            <div class="sidebar-item" gs-w="4" gs-h="5" data-type="UGV_ARM">🦾 로봇팔 제어</div>
+
+            <!-- UGV 모듈 나머지 추가 -->
+            <div class="sidebar-item" gs-w="4" gs-h="5" data-type="UGV_STATUS">📋 로봇 상태</div>
+            <div class="sidebar-item" gs-w="6" gs-h="2" data-type="UGV_CONNBAR">🔗 연결 바</div>
+            <div class="sidebar-item" gs-w="6" gs-h="3" data-type="UGV_LOGPANEL">📜 로그 패널</div>
+
+            <div class="sidebar-footer" onclick="openProfileModal()">
+                <img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" style="width: 35px; height: 35px; border-radius: 50%;">
+                <div>
+                    <div id="display-user-name" style="font-weight: bold;">로딩 중...</div>
+                    <div id="display-company" style="font-size: 11px; color: #bdc3c7;">UbiSam</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="grid-stack-container">
+                <div class="grid-stack"></div>
+            </div>
+            <div id="system-log" class="footer-log">
+                <div>[SYSTEM] 관제 시스템 초기화 완료.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0;">👤 내 정보 설정</h3>
+            <label for="edit-user-name">이름</label><input type="text" id="edit-user-name">
+            <label for="edit-company">회사</label><input type="text" id="edit-company">
+            <label for="edit-email">이메일</label><input type="text" id="edit-email">
+            <label for="edit-phone">전화번호</label><input type="text" id="edit-phone">
+            <div style="margin-bottom: 20px;">
+                <span style="color:#1abc9c;">🔔 알림 수신</span><br>
+                <label for="check-email">Email</label><input type="checkbox" id="check-email" style="width:auto;">
+                <label for="check-kakao">Kakao</label><input type="checkbox" id="check-kakao" style="width:auto; margin-left:10px;">
+                <label for="check-sms">SMS</label><input type="checkbox" id="check-sms" style="width:auto; margin-left:10px;">
+            </div>
+            <div style="display:flex; justify-content: flex-end; gap:10px;">
+                <button onclick="closeProfileModal()">취소</button>
+                <button onclick="saveProfile()" style="background:#1abc9c; color:white; border:none; padding:8px 15px; border-radius:4px;">저장하기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let grid = null;
+        let charts = {};
+
+        // 26-03-04 NDY: UGV 모듈 라우트 (전역 선언)
+        const ugvRoutes = {
+            'UGV_DRIVE': '/ugv/index.html#/drive',
+            'UGV_MAP':   '/ugv/index.html#/map',
+            'UGV_LIDAR': '/ugv/index.html#/lidar',
+            'UGV_ARM':   '/ugv/index.html#/arm',
+
+            // 26-03-04 NDY: UGV 단독 모듈 라우트 추가 
+            'UGV_STATUS':   '/ugv/index.html#/status',
+            'UGV_CONNBAR':  '/ugv/index.html#/connbar',
+            'UGV_LOGPANEL': '/ugv/index.html#/logpanel',
+        };
+
+        document.addEventListener('DOMContentLoaded', async function() {
+
+            // ✅ 1. GridStack v12 초기화
+            grid = GridStack.init({
+                cellHeight: 50,
+                margin: 10,
+                acceptWidgets: true,
+            });
+
+            // ✅ 2. v12 전용: 외부 드래그 등록 (init과 반드시 분리)
+            GridStack.setupDragIn('.sidebar-item', {
+                appendTo: 'body',
+                helper: 'clone',
+            });
+
+            // ✅ 3. 트러블슈팅 핵심: v12 내부 accept 함수가
+            //    grid-stack-item 클래스 없으면 false 반환하는 문제 강제 해결
+            grid.el.ddElement.ddDroppable.updateOption({
+                accept: (el) => true
+            });
+
+            // 4. 위젯 추가 이벤트
+            grid.on('added', function(event, items) {
+                items.forEach(item => {
+                    const el = item.el;
+                    if (el.querySelector('.module-header')) return;
+
+                    const type = el.getAttribute('data-type') || 'ROBOT_DATA';
+                    const id = 'mod-' + Date.now();
+
+                    el.setAttribute('gs-id', id);
+                    renderWidgetContent(el, id, type);
+
+                    // UGV 모듈과 VISION_STREAM은 차트 초기화 제외
+                    if (type !== 'VISION_STREAM' && !ugvRoutes[type]) {
+                        setTimeout(() => initModuleChart(id), 100);
+                    }
+                    appendLog(`[MODULE] ${type} 모듈 추가 완료.`);
+                });
+            });
+
+            await loadUserProfile();
+            restoreLayout();
+            startRandomDataStream();
+        });
+
+        // 위젯 내부 렌더링
+        function renderWidgetContent(el, id, type) {
+            let bodyHTML = '';
+
+            // 26-03-04 NDY: UGV iframe 모듈
+            if (ugvRoutes[type]) {
+                bodyHTML = `
+                    <iframe src="${ugvRoutes[type]}"
+                        style="width:100%; height:100%; border:none; border-radius:4px;"
+                        allow="autoplay">
+                    </iframe>`;
+
+            } else if (type === 'VISION_STREAM') {
+                bodyHTML = `
+                    <div style="flex:1; background:#000; overflow:hidden; position:relative; display:flex; align-items:center; justify-content:center;">
+                        <img id="${id}-stream" src="http://localhost:5000/video_feed"
+                            style="width:100%; height:100%; object-fit:contain;"
+                            onerror="handleVisionError(this)">
+                        <div style="position:absolute; top:5px; left:5px; color:#0f0; font-size:10px; background:rgba(0,0,0,0.5); padding:2px 5px;">LIVE | YOLO v11</div>
+                    </div>`;
+                startVisionServer();
+
+            } else {
+                bodyHTML = `<canvas id="${id}" style="flex:1;"></canvas>`;
+            }
+
+            // ✅ el.innerHTML 직접 덮어쓰면 GridStack resizable 핸들 깨짐
+            // grid-stack-item-content 만 새로 만들어 삽입
+            const content = document.createElement('div');
+            content.className = 'grid-stack-item-content';
+            content.innerHTML = `
+                <div class="module-header">
+                    <span>📊 ${type}</span>
+                    <button class="btn-delete" onclick="removeModule('${id}')">✖</button>
+                </div>
+                ${bodyHTML}`;
+            const existing = el.querySelector('.grid-stack-item-content');
+            if (existing) existing.remove();
+            el.appendChild(content);
+        }
+
+        function handleVisionError(imgElement) {
+            imgElement.src = 'https://via.placeholder.com/640x480?text=Starting+AI+Vision+Server...';
+            setTimeout(() => {
+                imgElement.src = "http://localhost:5000/video_feed?t=" + new Date().getTime();
+            }, 3000);
+        }
+
+        function startRandomDataStream() {
+            setInterval(() => {
+                updateAllCharts({ value: (Math.random() * 100).toFixed(1) });
+            }, 2000);
+        }
+
+        async function startVisionServer() {
+            try {
+                appendLog("[SYSTEM] 비전 서버(Python) 구동을 요청합니다...");
+                const response = await fetch('/api/visions/start', { method: 'POST' });
+                const result = await response.text();
+                appendLog(`[VISION] ${result}`);
+            } catch (error) {
+                appendLog("[ERROR] 비전 서버 구동 요청에 실패했습니다.");
+            }
+        }
+
+        function restoreLayout() {
+            const savedData = localStorage.getItem('robot-dashboard-layout');
+            if (!savedData) return;
+            const layout = JSON.parse(savedData);
+            grid.load(layout);
+            layout.forEach(w => {
+                const el = document.querySelector(`[gs-id="${w.id}"]`);
+                if (el && !el.querySelector('.module-header')) {
+                    const type = el.getAttribute('data-type') || 'ROBOT_DATA';
+                    renderWidgetContent(el, w.id, type);
+                    if (type !== 'VISION_STREAM' && !ugvRoutes[type]) {
+                        setTimeout(() => initModuleChart(w.id), 200);
+                    }
+                }
+            });
+            appendLog("[SYSTEM] 저장된 레이아웃을 불러왔습니다.");
+        }
+
+        async function loadUserProfile() {
+            try {
+                const res = await fetch('/api/users/ubisam');
+                const user = await res.json();
+                document.getElementById('display-user-name').innerText = user.userName || '이름 없음';
+                document.getElementById('display-company').innerText = user.companyName || 'UbiSam';
+            } catch(e) {
+                document.getElementById('display-user-name').innerText = "관리자 미등록";
+            }
+        }
+
+        async function saveProfile() {
+            const updated = {
+                userName: document.getElementById('edit-user-name').value,
+                companyName: document.getElementById('edit-company').value,
+                email: document.getElementById('edit-email').value,
+                phoneNumber: document.getElementById('edit-phone').value,
+                isEmailNotify: document.getElementById('check-email').checked,
+                isKakaoNotify: document.getElementById('check-kakao').checked,
+                isSmsNotify: document.getElementById('check-sms').checked,
+                role: 'ROLE_ADMIN'
+            };
+            const response = await fetch('/api/users/ubisam', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(updated)
+            });
+            if (response.ok) {
+                await loadUserProfile();
+                appendLog(`[SYSTEM] 프로필 업데이트 완료.`);
+                closeProfileModal();
+            }
+        }
+
+        function openProfileModal() { document.getElementById('profile-modal').style.display = 'block'; }
+        function closeProfileModal() { document.getElementById('profile-modal').style.display = 'none'; }
+
+        function connect() {
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.connect({}, () => {
+                appendLog("[WS] 서버 연결 성공");
+                stompClient.subscribe('/topic/status', (res) => updateAllCharts(JSON.parse(res.body)));
+            });
+        }
+
+        function disconnect() {
+            if (stompClient) stompClient.disconnect();
+            appendLog("[WS] 연결 해제");
+        }
+
+        function initModuleChart(id) {
+            const canvas = document.getElementById(id);
+            if (!canvas) return;
+            charts[id] = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: { labels: [], datasets: [{ label: 'Real-time Data', data: [], borderColor: '#3498db', tension: 0.3, fill: true }] },
+                options: { maintainAspectRatio: false, animation: false, scales: { y: { beginAtZero: true, max: 100 } } }
+            });
+        }
+
+        function updateAllCharts(data) {
+            Object.values(charts).forEach(chart => {
+                if (chart.data.labels.length > 15) { chart.data.labels.shift(); chart.data.datasets[0].data.shift(); }
+                chart.data.labels.push(new Date().toLocaleTimeString());
+                chart.data.datasets[0].data.push(data.value);
+                chart.update();
+            });
+        }
+
+        function removeModule(id) {
+            const widget = document.querySelector(`[gs-id="${id}"]`);
+            if (widget) grid.removeWidget(widget);
+            if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+            appendLog(`[SYSTEM] 모듈 ${id} 삭제됨.`);
+        }
+
+        function appendLog(msg) {
+            const logBox = document.getElementById('system-log');
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logBox.appendChild(entry);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function saveLayout() {
+            const data = grid.save();
+            localStorage.setItem('robot-dashboard-layout', JSON.stringify(data));
+            appendLog("[SYSTEM] 레이아웃 저장 완료");
+            alert("저장되었습니다.");
+        }
+    </script>
+</body>
+</html>

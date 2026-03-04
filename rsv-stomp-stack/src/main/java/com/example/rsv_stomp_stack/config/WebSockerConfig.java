@@ -27,7 +27,7 @@ public class WebSockerConfig implements WebSocketMessageBrokerConfigurer {
         registry.enableSimpleBroker("/topic", "/queue"); // "/topic"으로 시작하는 메시지는 브로커가 처리하도록 설정
 
         //// 클라이언트가 서버(컨트롤러)로 메시지를 보낼 때 사용하는 Prefix (상황B)
-        registry.setApplicationDestinationPrefixes("/app"); 
+        registry.setApplicationDestinationPrefixes("/api"); // "/api"로 시작하는 메시지는 @MessageMapping이 처리하도록 설정
     }
 
 
