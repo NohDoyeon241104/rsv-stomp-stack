@@ -6,14 +6,16 @@
     <div class="bar-center">
       <div class="url-group">
         <span :class="['dot', { connected: isConnected }]"></span>
+        <!--기존 : MQTT/rosbridge주소(15674/ws 또는 9090) placeholder="ws://localhost:8080/ws-stomp"  사용자가 입력하는 란 미리보기 텍스트 -->
         <input
           v-model="brokerUrl"
           type="text"
           class="url-input"
-          placeholder="ws://192.168.0.71:15674/ws"
+          placeholder="ws://192.168.0.71:15674/ws (mqtt) or ws://localhost:8080/ws-stomp (rosbridge)"
           :disabled="isConnected"
           @keyup.enter="handleConnect"
         />
+        
         <button
           :class="['conn-btn', { disconnect: isConnected }]"
           @click="handleConnect"
@@ -29,9 +31,14 @@
 </template>
 
 <script setup>
-import { useMqtt } from '@/composables/useMqtt'
+// 기존 MQTT 연결 상태와 URL 관리를 위한 커스텀 훅 사용  -주석
+// import { useMqtt } from '@/composables/useMqtt' 
+// const { brokerUrl, isConnected, connect, disconnect } = useMqtt()
+// 변경 26/03/05 NDY :  useMqtt 대신 useStomp 가져오기
+import { useStomp } from '@/composables/useStomp' 
+const { brokerUrl, isConnected, connect, disconnect } = useStomp()
 
-const { brokerUrl, isConnected, connect, disconnect } = useMqtt()
+
 
 function handleConnect() {
   if (isConnected.value) {

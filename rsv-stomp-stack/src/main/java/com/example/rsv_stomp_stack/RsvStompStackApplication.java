@@ -21,7 +21,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 
 @EnableScheduling 
-@EnableJpaRepositories(basePackages = "com.example.rsv_stomp_stack.api.users")
+@EnableJpaRepositories(basePackages = {"com.example.rsv_stomp_stack.api.users","com.example.rsv_stomp_stack.api.robotlogs"}) // 리포지토리 경로 명시 경로 추가는 배열형태에서 추가하면 된다 .
 @SpringBootApplication // 👈 이제 자동 설정이 정상 작동하며 DB와 연결됩니다.
 public class RsvStompStackApplication {
 
